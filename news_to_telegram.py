@@ -2,6 +2,10 @@ import feedparser
 import asyncio
 from telegram import Bot
 import pyshorteners
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+nltk.download('vader_lexicon')
 
 # Function to send message to Telegram
 async def send_telegram_message(message):
@@ -15,6 +19,17 @@ def shorten_url(url):
     s = pyshorteners.Shortener()
     return s.tinyurl.short(url)  # You can also use other services like Bitly if preferred
 
+# Function to analyze sentiment of news using NLTK VADER
+def analyze_sentiment(text):
+    analyzer = SentimentIntensityAnalyzer()
+    sentiment = analyzer.polarity_scores(text)
+    if sentiment['compound'] >= 0.05:
+        return 'Positive', '🟢'
+    elif sentiment['compound'] <= -0.05:
+        return 'Negative', '🔴'
+    else:
+        return 'Neutral', '🟡'
+
 # Fetch Google News RSS feed for Tesla
 def fetch_tesla_news():
     url = "https://news.google.com/rss/search?q=Tesla"
@@ -26,7 +41,9 @@ def fetch_tesla_news():
         news_link = entry.link
         # Shorten the news link
         shortened_link = shorten_url(news_link)
-        tesla_news_list.append(f"{news_title}\n{shortened_link}")
+        # Analyze the sentiment of the news title
+        sentiment, emoji = analyze_sentiment(news_title)
+        tesla_news_list.append(f"{news_title}\n{emoji} {sentiment} | {shortened_link}")
 
     return "\n\n".join(tesla_news_list)
 
@@ -41,7 +58,9 @@ def fetch_palantir_news():
         news_link = entry.link
         # Shorten the news link
         shortened_link = shorten_url(news_link)
-        palantir_news_list.append(f"{news_title}\n{shortened_link}")
+        # Analyze the sentiment of the news title
+        sentiment, emoji = analyze_sentiment(news_title)
+        palantir_news_list.append(f"{news_title}\n{emoji} {sentiment} | {shortened_link}")
 
     return "\n\n".join(palantir_news_list)
 
