@@ -21,8 +21,8 @@ def calculate_rsi(data, window=14):
     return rsi
 
 # Define the date range for fetching stock data
-start_date = "2023-01-01"
-end_date = "2024-01-01"
+start_date = "2020-01-01"
+end_date = "2025-01-01"
 
 for stock in stocks:
     # Fetch historical stock data
