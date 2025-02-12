@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import asyncio
 from telegram import Bot
 from datetime import datetime, timedelta
+import importlib
 
 # Global variable to track whether the message for no signals has been sent
 sent_no_signal_message = False
@@ -101,6 +102,10 @@ async def main():
         # Save the chart
         plt.savefig(f"{stock}_RSI_MA_MACD_Signals.png")
         print(f"{stock} RSI + MA + MACD-based trading signals generated! Chart saved.")
+
+    # Import and run the news sending code from `news_to_telegram.py`
+    news_module = importlib.import_module('news_to_telegram')  # Import the news module
+    await news_module.main()  # Call the main function from news_to_telegram.py
 
     print("✅ Trading signals and alerts sent!")
 
