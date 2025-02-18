@@ -13,8 +13,8 @@ class MyStrategy(bt.Strategy):
         self.signal = bt.indicators.MACD(self.data.close).signal
 
     def next(self):
-        # Buy signal: RSI < 50, MA50 > MA200, MACD > Signal Line (Condition Relaxed)
-        if self.rsi < 50 and self.ma50 > self.ma200 and self.macd > self.signal:  # Relaxed condition
+        # Buy signal condition (both conditions must be met)
+        if (self.rsi < 50) and ((self.ma50 > self.ma200) or (self.macd > self.signal)):  
             if not self.position:
                 cash = self.broker.get_cash()  # Get available cash
                 size = cash // self.data.close[0]  # Calculate the number of shares we can buy with available cash
@@ -23,8 +23,8 @@ class MyStrategy(bt.Strategy):
                 self.plot_buy_signal()  # Plot Buy Signal
                 print(f"Buy signal at {self.data.datetime.date(0)} for {self.data._name} with size {size} at price {self.data.close[0]} (Amount: {size * self.data.close[0]:.2f})")
 
-        # Sell signal: RSI > 60, MA50 < MA200, MACD < Signal Line (Condition Relaxed)
-        elif self.rsi > 60 and self.ma50 < self.ma200 and self.macd < self.signal:
+        # Sell signal condition (both conditions must be met)
+        elif (self.rsi > 70) and ((self.ma50 < self.ma200) or (self.macd < self.signal)):
             if self.position:
                 size = self.position.size  # Sell the entire position
                 self.sell(size=size)
