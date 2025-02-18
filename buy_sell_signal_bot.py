@@ -64,8 +64,8 @@ async def main():
         data = calculate_macd(data)
 
         # Generate buy/sell signals
-        data["Buy_Signal"] = (data["RSI"] < 30) & (data["MA_50"] > data["MA_200"]) & (data["MACD"] > data["Signal_Line"])
-        data["Sell_Signal"] = (data["RSI"] > 70) & (data["MA_50"] < data["MA_200"]) & (data["MACD"] < data["Signal_Line"])
+        data["Buy_Signal"] = (data["RSI"] < 40) & (data["MA_50"] > data["MA_200"]) & (data["MACD"] > data["Signal_Line"])
+        data["Sell_Signal"] = (data["RSI"] > 60) & (data["MA_50"] < data["MA_200"]) & (data["MACD"] < data["Signal_Line"])
 
         # Send Telegram alerts for buy/sell signals
         if data["Buy_Signal"].any():
