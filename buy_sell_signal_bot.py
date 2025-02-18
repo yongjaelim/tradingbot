@@ -3,32 +3,40 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import asyncio
 from telegram import Bot
-from datetime import datetime, timedelta
+from datetime import datetime
 import importlib
+import os
+import logging
 
-# Global variable to track whether the message for no signals has been sent
-sent_no_signal_message = False
+# Logging configuration
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Function to send message to Telegram (with await for asynchronous execution)
+# Dictionary to manage signal message state per stock
+sent_no_signal_message = {}
+
+# Hardcoded default Telegram bot token and chat ID
+TELEGRAM_BOT_TOKEN = '7842360723:AAFnGrPHknlSuWLwGpQQhMH8Zl8AnSd9Ae8'
+TELEGRAM_CHAT_ID = '5664156848'
+
+# Asynchronous function to send Telegram messages
 async def send_telegram_message(message):
-    bot_token = '7842360723:AAFnGrPHknlSuWLwGpQQhMH8Zl8AnSd9Ae8'
-    chat_id = '5664156848'  # Your Telegram chat ID
-    bot = Bot(token=bot_token)
-    await bot.send_message(chat_id=chat_id, text=message)
-
-# Define stock tickers
-stocks = ["TSLA", "PLTR"]
+    try:
+        bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
+        logging.info(f"Telegram message sent: {message}")
+    except Exception as e:
+        logging.error(f"Failed to send Telegram message: {e}")
 
 # Function to calculate RSI
 def calculate_rsi(data, window=14):
     delta = data['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+    gain = delta.where(delta > 0, 0).rolling(window=window).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
     rs = gain / loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# Function to calculate Moving Averages
+# Function to calculate moving averages
 def calculate_ma(data):
     data["MA_50"] = data["Close"].rolling(window=50).mean()
     data["MA_200"] = data["Close"].rolling(window=200).mean()
@@ -42,72 +50,95 @@ def calculate_macd(data):
     data["Signal_Line"] = data["MACD"].ewm(span=9, adjust=False).mean()
     return data
 
-# Get today's date and last date
-today = datetime.today().strftime('%Y-%m-%d')
-start_date = "2020-01-01"  # Keep this as the start date
-end_date = today  # Use today's date as the end date
+# Asynchronous function to process each stock:
+# Data download, indicator calculation, signal generation, Telegram notification, and chart saving.
+async def process_stock(stock, start_date, end_date):
+    global sent_no_signal_message
 
-# Main function to execute the trading logic
-async def main():
-    global sent_no_signal_message  # Declare to modify the global variable
-
-    # Send an immediate execution message
-    await send_telegram_message("Trading bot execution started!")
-
-    for stock in stocks:
-        # Fetch historical stock data with daily interval
+    try:
         data = yf.download(stock, start=start_date, end=end_date, interval="1d")
+    except Exception as e:
+        logging.error(f"{stock} data download failed: {e}")
+        return
 
-        # Calculate RSI, MA, and MACD
-        data["RSI"] = calculate_rsi(data)
-        data = calculate_ma(data)
-        data = calculate_macd(data)
+    if data.empty:
+        logging.warning(f"No data available for {stock}.")
+        return
 
-        # Generate buy/sell signals
-        data["Buy_Signal"] = (data["RSI"] < 40) & (data["MA_50"] > data["MA_200"]) & (data["MACD"] > data["Signal_Line"])
-        data["Sell_Signal"] = (data["RSI"] > 60) & (data["MA_50"] < data["MA_200"]) & (data["MACD"] < data["Signal_Line"])
+    # Calculate indicators
+    data["RSI"] = calculate_rsi(data)
+    data = calculate_ma(data)
+    data = calculate_macd(data)
 
-        # Send Telegram alerts for buy/sell signals
-        if data["Buy_Signal"].any():
-            await send_telegram_message(f"Buy Signal detected at {data.index[data['Buy_Signal'].idxmax()]} for {stock}")
-            sent_no_signal_message = False  # Reset the no signal message flag when a signal is sent
-        elif data["Sell_Signal"].any():
-            await send_telegram_message(f"Sell Signal detected at {data.index[data['Sell_Signal'].idxmax()]} for {stock}")
-            sent_no_signal_message = False  # Reset the no signal message flag when a signal is sent
-        elif not sent_no_signal_message:
-            # Send the message only once if no signals are generated today
-            await send_telegram_message(f"{stock}: No buy/sell signals today. Process completed!")
-            sent_no_signal_message = True  # Set the flag to true to avoid repeated messages
+    # Generate buy/sell signals over the entire dataset
+    data["Buy_Signal"] = (data["RSI"] < 50) & ((data["MA_50"] > data["MA_200"]) | (data["MACD"] > data["Signal_Line"]))
+    data["Sell_Signal"] = (data["RSI"] > 70) & ((data["MA_50"] < data["MA_200"]) | (data["MACD"] < data["Signal_Line"]))
 
-        # Plot stock price, MA, RSI, and MACD with signals
+    if stock not in sent_no_signal_message:
+        sent_no_signal_message[stock] = False
+
+    # Check only the latest (most recent) row for today's signal
+    latest_date = data.index[-1]
+    buy_signal = data["Buy_Signal"].iat[-1]
+    sell_signal = data["Sell_Signal"].iat[-1]
+
+    if buy_signal:
+        await send_telegram_message(f"{stock} - Buy Signal detected on {latest_date}")
+        sent_no_signal_message[stock] = False
+    elif sell_signal:
+        await send_telegram_message(f"{stock} - Sell Signal detected on {latest_date}")
+        sent_no_signal_message[stock] = False
+    elif not sent_no_signal_message[stock]:
+        await send_telegram_message(f"{stock}: No buy/sell signals today.")
+        sent_no_signal_message[stock] = True
+
+    try:
         plt.figure(figsize=(10, 6))
-
-        # Plot Closing Price and Moving Averages
+        # Plot Close Price and Moving Averages
         plt.subplot(2, 1, 1)
         plt.plot(data.index, data["Close"], label="Close Price", color="blue")
         plt.plot(data.index, data["MA_50"], label="50-Day MA", color="orange")
         plt.plot(data.index, data["MA_200"], label="200-Day MA", color="red")
-        plt.scatter(data.index[data["Buy_Signal"]], data["Close"][data["Buy_Signal"]], label="Buy Signal", marker="^", color="green", alpha=1)
-        plt.scatter(data.index[data["Sell_Signal"]], data["Close"][data["Sell_Signal"]], label="Sell Signal", marker="v", color="red", alpha=1)
-        plt.title(f"{stock} Price & RSI + MA + MACD-based Signals")
+        plt.scatter(data.index[data["Buy_Signal"]], data["Close"][data["Buy_Signal"]],
+                    label="Buy Signal", marker="^", color="green", alpha=1)
+        plt.scatter(data.index[data["Sell_Signal"]], data["Close"][data["Sell_Signal"]],
+                    label="Sell Signal", marker="v", color="red", alpha=1)
+        plt.title(f"{stock} Price and Indicator Signals")
         plt.legend()
 
-        # Plot RSI Indicator
+        # Plot RSI
         plt.subplot(2, 1, 2)
         plt.plot(data.index, data["RSI"], label="RSI", color="red")
-        plt.axhline(70, linestyle="--", color="gray")  # Overbought threshold
-        plt.axhline(30, linestyle="--", color="gray")  # Oversold threshold
+        plt.axhline(70, linestyle="--", color="gray")
+        plt.axhline(30, linestyle="--", color="gray")
         plt.legend()
 
-        # Save the chart
-        plt.savefig(f"{stock}_RSI_MA_MACD_Signals.png")
-        print(f"{stock} RSI + MA + MACD-based trading signals generated! Chart saved.")
+        chart_filename = f"{stock}_RSI_MA_MACD_Signals.png"
+        plt.savefig(chart_filename)
+        plt.close()
+        logging.info(f"{stock} chart saved as {chart_filename}.")
+    except Exception as e:
+        logging.error(f"Failed to create/save chart for {stock}: {e}")
 
-    # Import and run the news sending code from `news_to_telegram.py`
-    news_module = importlib.import_module('news_to_telegram')  # Import the news module
-    await news_module.main()  # Call the main function from news_to_telegram.py
+# Main asynchronous function to process all stocks and run the news module.
+async def main():
+    await send_telegram_message("Trading bot execution started!")
 
-    print("✅ Trading signals and alerts sent!")
+    stocks = ["TSLA", "PLTR"]
+    today = datetime.today().strftime('%Y-%m-%d')
+    start_date = "2020-01-01"
+    end_date = today
 
-# Run the main function
-asyncio.run(main())
+    tasks = [process_stock(stock, start_date, end_date) for stock in stocks]
+    await asyncio.gather(*tasks)
+
+    try:
+        news_module = importlib.import_module('news_to_telegram')
+        await news_module.main()
+    except Exception as e:
+        logging.error(f"Failed to execute news_to_telegram module: {e}")
+
+    logging.info("Trading signals and alerts sent!")
+
+if __name__ == "__main__":
+    asyncio.run(main())
