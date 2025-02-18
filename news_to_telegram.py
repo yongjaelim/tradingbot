@@ -4,20 +4,21 @@ from telegram import Bot
 import pyshorteners
 import nltk
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from urllib.parse import quote_plus
 
 nltk.download('vader_lexicon')
 
 # Function to send message to Telegram
 async def send_telegram_message(message):
-    bot_token = '7842360723:AAFnGrPHknlSuWLwGpQQhMH8Zl8AnSd9Ae8'  # Your bot token
-    chat_id = '5664156848'  # Your chat ID
+    bot_token = '7842360723:AAFnGrPHknlSuWLwGpQQhMH8Zl8AnSd9Ae8'
+    chat_id = '5664156848'
     bot = Bot(token=bot_token)
     await bot.send_message(chat_id=chat_id, text=message)
 
 # Function to shorten the URL using pyshorteners
 def shorten_url(url):
     s = pyshorteners.Shortener()
-    return s.tinyurl.short(url)  # You can also use other services like Bitly if preferred
+    return s.tinyurl.short(url)
 
 # Function to analyze sentiment of news using NLTK VADER
 def analyze_sentiment(text):
@@ -30,58 +31,38 @@ def analyze_sentiment(text):
     else:
         return 'Neutral', '🟡'
 
-# Fetch Google News RSS feed for Tesla
-def fetch_tesla_news():
-    url = "https://news.google.com/rss/search?q=Tesla"
+# Generic function to fetch news for a given query
+def fetch_news(query, limit=5):
+    # URL-encode the query to handle spaces and control characters
+    encoded_query = quote_plus(query)
+    url = f"https://news.google.com/rss/search?q={encoded_query}"
     feed = feedparser.parse(url)
-
-    tesla_news_list = []
-    for entry in feed.entries[:5]:  # Limit to top 5 news
+    news_list = []
+    for entry in feed.entries[:limit]:
         news_title = entry.title
         news_link = entry.link
-        # Shorten the news link
         shortened_link = shorten_url(news_link)
-        # Analyze the sentiment of the news title
         sentiment, emoji = analyze_sentiment(news_title)
-        tesla_news_list.append(f"{news_title}\n{emoji} {sentiment} | {shortened_link}")
+        news_list.append(f"{news_title}\n{emoji} {sentiment} | {shortened_link}")
+    return "\n\n".join(news_list)
 
-    return "\n\n".join(tesla_news_list)
-
-# Fetch Google News RSS feed for Palantir
-def fetch_palantir_news():
-    url = "https://news.google.com/rss/search?q=Palantir"
-    feed = feedparser.parse(url)
-
-    palantir_news_list = []
-    for entry in feed.entries[:5]:  # Limit to top 5 news
-        news_title = entry.title
-        news_link = entry.link
-        # Shorten the news link
-        shortened_link = shorten_url(news_link)
-        # Analyze the sentiment of the news title
-        sentiment, emoji = analyze_sentiment(news_title)
-        palantir_news_list.append(f"{news_title}\n{emoji} {sentiment} | {shortened_link}")
-
-    return "\n\n".join(palantir_news_list)
-
-# Main function to fetch news and send to Telegram
+# Main function to fetch news for each stock and send to Telegram
 async def main():
-    print("Starting news fetch...")  # Debugging line
-    tesla_news = fetch_tesla_news()
-    palantir_news = fetch_palantir_news()
+    print("Starting news fetch...")  # Debug message
+    # Dictionary mapping ticker symbols to their search query strings.
+    # For RXRX, the ticker is "RXRX" but the company name is "recursion pharmaceuticals".
+    stocks = {
+        "Tesla": "Tesla",
+        "Palantir": "Palantir",
+        "RXRX": "recursion pharmaceuticals"
+    }
+    for name, query in stocks.items():
+        news = fetch_news(query)
+        if news:
+            await send_telegram_message(f"Latest {name} News:\n\n{news}")
+        else:
+            await send_telegram_message(f"No recent {name} news found.")
+    print("News sent!")  # Debug message
 
-    if tesla_news:
-        await send_telegram_message(f"Latest Tesla News:\n\n{tesla_news}")
-    else:
-        await send_telegram_message("No recent Tesla news found.")
-
-    if palantir_news:
-        await send_telegram_message(f"Latest Palantir News:\n\n{palantir_news}")
-    else:
-        await send_telegram_message("No recent Palantir news found.")
-
-    print("News sent!")  # Debugging line
-
-# This will ensure that the main() function is only run if this script is executed directly
 if __name__ == "__main__":
-    asyncio.run(main())  # Running the main function with asyncio
+    asyncio.run(main())

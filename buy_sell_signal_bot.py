@@ -124,7 +124,8 @@ async def process_stock(stock, start_date, end_date):
 async def main():
     await send_telegram_message("Trading bot execution started!")
 
-    stocks = ["TSLA", "PLTR"]
+    # Added "RXRX" to the stocks list for Recursion Pharmaceuticals
+    stocks = ["TSLA", "PLTR", "RXRX"]
     today = datetime.today().strftime('%Y-%m-%d')
     start_date = "2020-01-01"
     end_date = today
